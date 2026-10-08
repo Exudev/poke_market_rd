@@ -1,0 +1,86 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        SELECT id, user_id, pokemon_name, series, set_name, condition, price_cents, currency, description, image_url, created_at\n        FROM posts\n        WHERE \n            ($1::text[] IS NULL OR set_name = ANY($1::text[]))\n            AND ($4::text IS NULL OR pokemon_name ILIKE '%' || $4 || '%')\n        ORDER BY \n            CASE WHEN $5 = 'price_asc' THEN price_cents END ASC,\n            CASE WHEN $5 = 'price_desc' THEN price_cents END DESC,\n            created_at DESC\n        LIMIT $2 OFFSET $3\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "user_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 2,
+        "name": "pokemon_name",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 3,
+        "name": "series",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 4,
+        "name": "set_name",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 5,
+        "name": "condition",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 6,
+        "name": "price_cents",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 7,
+        "name": "currency",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 8,
+        "name": "description",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 9,
+        "name": "image_url",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 10,
+        "name": "created_at",
+        "type_info": "Timestamptz"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "TextArray",
+        "Int8",
+        "Int8",
+        "Text",
+        "Text"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      true,
+      true,
+      true
+    ]
+  },
+  "hash": "10c8590dac579c0024035804fae2d1a3c3dac4c1a3dd1cf731396141fd1c43a5"
+}

@@ -1,0 +1,83 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        SELECT \n            c.id, c.user_id, u.username, u.avatar_url, c.content, c.image_url, c.category, c.created_at,\n            (SELECT COUNT(*) FROM community_likes cl WHERE cl.post_id = c.id) as likes_count,\n            (SELECT COUNT(*) FROM community_comments cc WHERE cc.post_id = c.id) as comments_count,\n            EXISTS(SELECT 1 FROM community_likes cl WHERE cl.post_id = c.id AND cl.user_id = $1) as user_liked\n        FROM community_posts c\n        JOIN users u ON c.user_id = u.id\n        WHERE ($2::text IS NULL OR c.category = $2)\n        ORDER BY c.created_at DESC\n        LIMIT 50\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "user_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 2,
+        "name": "username",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 3,
+        "name": "avatar_url",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 4,
+        "name": "content",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 5,
+        "name": "image_url",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 6,
+        "name": "category",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 7,
+        "name": "created_at",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 8,
+        "name": "likes_count",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 9,
+        "name": "comments_count",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 10,
+        "name": "user_liked",
+        "type_info": "Bool"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Text"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      true,
+      false,
+      true,
+      true,
+      true,
+      null,
+      null,
+      null
+    ]
+  },
+  "hash": "cd019929b31adee2782fb3dc449c43d94df8a19edb537bae42d4a1b1715f215f"
+}

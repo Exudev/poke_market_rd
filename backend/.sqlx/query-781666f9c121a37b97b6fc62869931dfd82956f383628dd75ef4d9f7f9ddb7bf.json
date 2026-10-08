@@ -1,0 +1,84 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        SELECT p.id, p.user_id, p.pokemon_name, p.series, p.set_name, p.condition, p.price_cents, p.currency, p.description, p.image_url, p.created_at\n        FROM posts p\n        JOIN favorites f ON p.id = f.post_id\n        WHERE f.user_id = $1\n        ORDER BY f.created_at DESC\n        LIMIT $2 OFFSET $3\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "user_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 2,
+        "name": "pokemon_name",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 3,
+        "name": "series",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 4,
+        "name": "set_name",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 5,
+        "name": "condition",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 6,
+        "name": "price_cents",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 7,
+        "name": "currency",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 8,
+        "name": "description",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 9,
+        "name": "image_url",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 10,
+        "name": "created_at",
+        "type_info": "Timestamptz"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Int8",
+        "Int8"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      true,
+      true,
+      true
+    ]
+  },
+  "hash": "781666f9c121a37b97b6fc62869931dfd82956f383628dd75ef4d9f7f9ddb7bf"
+}

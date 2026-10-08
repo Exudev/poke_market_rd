@@ -1,0 +1,76 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        SELECT \n            o.id, o.amount_cents, o.currency, o.status, o.created_at, o.post_id,\n            p.pokemon_name, p.image_url,\n            u.username as buyer_username,\n            CASE WHEN o.buyer_id = $1 THEN 'sent' ELSE 'received' END as type_str\n        FROM offers o\n        JOIN posts p ON o.post_id = p.id\n        JOIN users u ON o.buyer_id = u.id\n        WHERE o.buyer_id = $1 OR p.user_id = $1\n        ORDER BY o.created_at DESC\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "amount_cents",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 2,
+        "name": "currency",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 3,
+        "name": "status",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 4,
+        "name": "created_at",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 5,
+        "name": "post_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 6,
+        "name": "pokemon_name",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 7,
+        "name": "image_url",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 8,
+        "name": "buyer_username",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 9,
+        "name": "type_str",
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      true,
+      false,
+      null
+    ]
+  },
+  "hash": "36e740106446e1530cb49ec3b857584a074660c36b50540126cb92554a9b9225"
+}

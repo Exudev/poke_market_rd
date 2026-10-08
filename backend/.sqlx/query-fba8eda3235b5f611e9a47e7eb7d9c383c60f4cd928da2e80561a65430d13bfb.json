@@ -1,0 +1,20 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        UPDATE posts\n        SET price_cents = $1, currency = $2, condition = $3, description = $4, image_url = $5\n        WHERE id = $6 AND user_id = $7\n        ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Int4",
+        "Varchar",
+        "Varchar",
+        "Text",
+        "Varchar",
+        "Uuid",
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "fba8eda3235b5f611e9a47e7eb7d9c383c60f4cd928da2e80561a65430d13bfb"
+}

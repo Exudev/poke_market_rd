@@ -1,0 +1,85 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        WITH inserted AS (\n            INSERT INTO community_posts (user_id, content, image_url, category)\n            VALUES ($1, $2, $3, $4)\n            RETURNING id, user_id, content, image_url, category, created_at\n        )\n        SELECT \n            i.id, i.user_id, u.username, u.avatar_url, i.content, i.image_url, i.category, i.created_at,\n            0::bigint as likes_count, 0::bigint as comments_count, false as user_liked\n        FROM inserted i\n        JOIN users u ON i.user_id = u.id\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "user_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 2,
+        "name": "username",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 3,
+        "name": "avatar_url",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 4,
+        "name": "content",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 5,
+        "name": "image_url",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 6,
+        "name": "category",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 7,
+        "name": "created_at",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 8,
+        "name": "likes_count",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 9,
+        "name": "comments_count",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 10,
+        "name": "user_liked",
+        "type_info": "Bool"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Text",
+        "Varchar",
+        "Varchar"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      true,
+      false,
+      true,
+      true,
+      true,
+      null,
+      null,
+      null
+    ]
+  },
+  "hash": "c0359b4509cc9fe121a7bb7d4d4ea1c538f89c834dfbd6bf5becde7028389c91"
+}
