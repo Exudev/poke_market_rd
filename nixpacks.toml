@@ -1,0 +1,2 @@
+[phases.build]
+cmds = ["SQLX_OFFLINE=true cargo build --release"]
