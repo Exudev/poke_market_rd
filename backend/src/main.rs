@@ -60,6 +60,7 @@ pub fn build_app(pool: sqlx::PgPool) -> Router {
         .with_state(pool)
         .merge(protected_routes)
         .layer(cors)
+        .layer(tower_http::trace::TraceLayer::new_for_http())
 }
 
 #[tokio::main]
