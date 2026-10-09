@@ -76,6 +76,13 @@ async fn main() {
         .await
         .expect("Failed to connect to Postgres");
 
+    // Run database migrations automatically on startup
+    tracing::info!("Running database migrations...");
+    sqlx::migrate!("./migrations")
+        .run(&pool)
+        .await
+        .expect("Failed to run database migrations");
+
     let app = build_app(pool);
 
     let addr = SocketAddr::from(([0, 0, 0, 0], 8080));
