@@ -2,10 +2,12 @@
 frontend/node_modules/
 frontend/dist/
 frontend/.env*
+!frontend/.env.example
 
 # Backend
 backend/target/
 backend/.env*
+!backend/.env.example
 backend/Cargo.lock
 
 # OS

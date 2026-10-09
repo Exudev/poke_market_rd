@@ -539,7 +539,10 @@ pub async fn upload_image(
                 
                 tokio::fs::write(&path, data).await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
                 
-                let url = format!("http://localhost:8080/uploads/{}", unique_name);
+                let backend_url = std::env::var("BACKEND_URL")
+                    .or_else(|_| std::env::var("API_URL"))
+                    .unwrap_or_else(|_| "http://localhost:8080".to_string());
+                let url = format!("{}/uploads/{}", backend_url.trim_end_matches('/'), unique_name);
                 return Ok((StatusCode::OK, Json(serde_json::json!({ "url": url }))));
             }
         }

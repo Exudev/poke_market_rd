@@ -77,16 +77,36 @@ npm run dev
 
 **Backend (`backend/.env`)**
 ```env
+# Database
 DATABASE_URL=postgres://username:password@localhost/poke_market
+
+# Authentication & Server
 JWT_SECRET=super_secret_jwt_key
+PORT=8080
+
+# Frontend Base URL (Used for verification & password reset email links)
+# - Local: http://localhost:5173
+# - Production: https://your-domain.com
+BASE_URL=http://localhost:5173
+
+# Optional: Server URL fallback for local uploads (if Cloudinary is omitted)
+# BACKEND_URL=http://localhost:8080
+
+# Cloudinary (Optional, for card photo uploads & AWS Rekognition auto-moderation)
 CLOUDINARY_URL=cloudinary://API_KEY:API_SECRET@CLOUD_NAME
+
+# Resend / SMTP Email (Leave empty in local dev to use terminal STUB output)
 SMTP_HOST=smtp.resend.com
 SMTP_USER=resend
 SMTP_PASS=re_your_resend_api_key
+SMTP_FROM=PokéMart <onboarding@resend.dev>
 ```
 
 **Frontend (`frontend/.env`)**
 ```env
+# Backend API URL
+# - Local: http://localhost:8080
+# - Production: https://api.your-domain.com
 VITE_API_URL=http://localhost:8080
 ```
 

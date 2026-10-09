@@ -86,7 +86,11 @@ async fn main() {
 
     let app = build_app(pool);
 
-    let addr = SocketAddr::from(([0, 0, 0, 0], 8080));
+    let port: u16 = env::var("PORT")
+        .ok()
+        .and_then(|p| p.parse().ok())
+        .unwrap_or(8080);
+    let addr = SocketAddr::from(([0, 0, 0, 0], port));
     tracing::info!("Listening on {}", addr);
 
     let listener = tokio::net::TcpListener::bind(addr).await.unwrap();
