@@ -25,16 +25,17 @@ const newCommentContent = ref<Record<string, string>>({})
 const fetchPosts = async () => {
     try {
         loading.value = true
+        errorMessage.value = ''
         const token = localStorage.getItem('token')
         const headers = token ? { Authorization: `Bearer ${token}` } : {}
         
-        const res = await axios.get('api/community', {
+        const res = await axios.get('/api/community', {
             params: { category: activeCategory.value },
             headers
         })
         posts.value = res.data
     } catch (error: any) {
-        errorMessage.value = error.response?.data || "Failed to load community posts."
+        errorMessage.value = error.response?.data?.error || error.response?.data?.message || (typeof error.response?.data === 'string' ? error.response.data : "Failed to load community posts.")
     } finally {
         loading.value = false
     }
@@ -54,16 +55,15 @@ const handleFileUpload = async (event: any) => {
 
     try {
         const token = localStorage.getItem('token')
-        const response = await axios.post('api/upload', formData, {
+        const response = await axios.post('/api/upload', formData, {
             headers: {
-                'Authorization': `Bearer ${token}`,
-                'Content-Type': 'multipart/form-data'
+                'Authorization': `Bearer ${token}`
             }
         })
         imageUrl.value = response.data.url
-    } catch (error) {
+    } catch (error: any) {
         console.error("Failed to upload image", error)
-        alert("Failed to upload image.")
+        alert(error.response?.data?.error || error.response?.data?.message || "Failed to upload image.")
     } finally {
         uploadingImage.value = false
     }
@@ -84,7 +84,7 @@ const submitPost = async () => {
             return
         }
         
-        await axios.post('api/community', {
+        await axios.post('/api/community', {
             content: newPostContent.value,
             image_url: imageUrl.value || null,
             category: newPostCategory.value
@@ -98,7 +98,7 @@ const submitPost = async () => {
         await fetchPosts()
     } catch (e: any) {
         console.error(e)
-        alert(e.response?.data || "Failed to create post.")
+        alert(e.response?.data?.error || e.response?.data?.message || "Failed to create post.")
     }
 }
 
@@ -115,7 +115,7 @@ const toggleLike = async (post: any) => {
         post.user_liked = !wasLiked
         post.likes_count = parseInt(post.likes_count) + (wasLiked ? -1 : 1)
 
-        await axios.post(`api/community/${post.id}/like`, {}, {
+        await axios.post(`/api/community/${post.id}/like`, {}, {
             headers: { Authorization: `Bearer ${token}` }
         })
     } catch (e) {
@@ -128,7 +128,7 @@ const toggleLike = async (post: any) => {
 
 const fetchComments = async (postId: string) => {
     try {
-        const res = await axios.get(`api/community/${postId}/comments`)
+        const res = await axios.get(`/api/community/${postId}/comments`)
         postComments.value[postId] = res.data
     } catch (e) {
         console.error("Failed to load comments", e)
@@ -153,7 +153,7 @@ const submitComment = async (postId: string) => {
             return
         }
         
-        const res = await axios.post(`api/community/${postId}/comments`, {
+        const res = await axios.post(`/api/community/${postId}/comments`, {
             content: content.trim()
         }, {
             headers: { Authorization: `Bearer ${token}` }

@@ -17,6 +17,7 @@ pub async fn auth_middleware(
     let token = if let Some(t) = auth_header {
         t
     } else {
+        tracing::warn!("Auth middleware: missing Authorization Bearer token");
         return Err(StatusCode::UNAUTHORIZED);
     };
 
@@ -28,7 +29,10 @@ pub async fn auth_middleware(
         &Validation::default(),
     ) {
         Ok(data) => data,
-        Err(_) => return Err(StatusCode::UNAUTHORIZED),
+        Err(e) => {
+            tracing::warn!("Auth middleware: token validation failed: {}", e);
+            return Err(StatusCode::UNAUTHORIZED);
+        }
     };
 
     req.extensions_mut().insert(token_data.claims);

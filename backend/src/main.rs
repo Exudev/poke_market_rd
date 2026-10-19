@@ -42,6 +42,15 @@ pub fn build_app(pool: sqlx::PgPool) -> Router {
         .route_layer(axum::middleware::from_fn(auth_middleware::auth_middleware))
         .with_state(pool.clone());
 
+    let trace_layer = tower_http::trace::TraceLayer::new_for_http()
+        .make_span_with(tower_http::trace::DefaultMakeSpan::new().level(tracing::Level::INFO))
+        .on_request(tower_http::trace::DefaultOnRequest::new().level(tracing::Level::INFO))
+        .on_response(
+            tower_http::trace::DefaultOnResponse::new()
+                .level(tracing::Level::INFO)
+                .latency_unit(tower_http::LatencyUnit::Millis),
+        );
+
     Router::new()
         .nest_service("/uploads", tower_http::services::ServeDir::new("uploads"))
         .route("/", get(handlers::health_check))
@@ -60,13 +69,24 @@ pub fn build_app(pool: sqlx::PgPool) -> Router {
         .with_state(pool)
         .merge(protected_routes)
         .layer(cors)
-        .layer(tower_http::trace::TraceLayer::new_for_http())
+        .layer(axum::extract::DefaultBodyLimit::max(25 * 1024 * 1024))
+        .layer(trace_layer)
 }
 
 #[tokio::main]
 async fn main() {
-    tracing_subscriber::fmt::init();
+    tracing_subscriber::fmt()
+        .with_env_filter(
+            tracing_subscriber::EnvFilter::try_from_default_env()
+                .unwrap_or_else(|_| "backend=info,tower_http=info".into()),
+        )
+        .init();
     dotenv().ok();
+
+    // Ensure uploads directory exists for file uploads
+    if let Err(e) = std::fs::create_dir_all("uploads") {
+        tracing::warn!("Could not create uploads directory: {}", e);
+    }
 
     let database_url = env::var("DATABASE_URL")
         .unwrap_or_else(|_| "postgres://localhost/poke_market".to_string());

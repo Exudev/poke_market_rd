@@ -13,3 +13,5 @@ backend/Cargo.lock
 # OS
 .DS_Store
 node_modules/
+
+.notes/

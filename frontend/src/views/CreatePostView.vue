@@ -36,22 +36,22 @@ const handleFileUpload = async (event: any) => {
 
     imageFile.value = file
     uploading.value = true
+    errorMessage.value = ''
     
     const formData = new FormData()
     formData.append('file', file)
 
     try {
         const token = localStorage.getItem('token')
-        const response = await axios.post('api/upload', formData, {
+        const response = await axios.post('/api/upload', formData, {
             headers: {
-                'Authorization': `Bearer ${token}`,
-                'Content-Type': 'multipart/form-data'
+                'Authorization': `Bearer ${token}`
             }
         })
         imageUrl.value = response.data.url
-    } catch (error) {
+    } catch (error: any) {
         console.error('Upload failed:', error)
-        errorMessage.value = "Failed to upload image."
+        errorMessage.value = error.response?.data?.error || error.response?.data?.message || "Failed to upload image."
     } finally {
         uploading.value = false
     }
@@ -68,7 +68,7 @@ const checkMarketPrice = async () => {
     fetchingPrice.value = true
     errorMessage.value = ''
     try {
-        const response = await axios.get(`api/market-price`, {
+        const response = await axios.get(`/api/market-price`, {
             params: { name: pokemonName.value, set: setName.value }
         })
         marketPrice.value = response.data
@@ -89,7 +89,7 @@ const createPost = async () => {
             priceCents = Math.round(parseFloat(price.value) * 100)
         }
 
-        await axios.post('api/posts', {
+        await axios.post('/api/posts', {
             pokemon_name: pokemonName.value,
             series: series.value,
             set_name: setName.value,
@@ -102,9 +102,10 @@ const createPost = async () => {
             headers: { Authorization: `Bearer ${token}` }
         })
         
-        toast.success('Card listed successfully!'); router.push('/')
+        toast.success('Card listed successfully!')
+        router.push('/')
     } catch (error: any) {
-        errorMessage.value = error.response?.data || "Failed to create listing."
+        errorMessage.value = error.response?.data?.error || error.response?.data || "Failed to create listing."
     }
 }
 </script>

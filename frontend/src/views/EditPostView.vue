@@ -38,22 +38,22 @@ const handleFileUpload = async (event: any) => {
 
     imageFile.value = file
     uploading.value = true
+    errorMessage.value = ''
     
     const formData = new FormData()
     formData.append('file', file)
 
     try {
         const token = localStorage.getItem('token')
-        const response = await axios.post('api/upload', formData, {
+        const response = await axios.post('/api/upload', formData, {
             headers: {
-                'Authorization': `Bearer ${token}`,
-                'Content-Type': 'multipart/form-data'
+                'Authorization': `Bearer ${token}`
             }
         })
         imageUrl.value = response.data.url
-    } catch (error) {
+    } catch (error: any) {
         console.error("Failed to upload image", error)
-        errorMessage.value = "Failed to upload image. Please try again."
+        errorMessage.value = error.response?.data?.error || error.response?.data?.message || "Failed to upload image. Please try again."
     } finally {
         uploading.value = false
     }
@@ -70,7 +70,7 @@ const checkMarketPrice = async () => {
     fetchingPrice.value = true
     errorMessage.value = ''
     try {
-        const response = await axios.get(`api/market-price`, {
+        const response = await axios.get(`/api/market-price`, {
             params: { name: pokemonName.value, set: setName.value }
         })
         marketPrice.value = response.data
@@ -90,7 +90,7 @@ const submitForm = async () => {
 
     try {
         const token = localStorage.getItem('token')
-        await axios.put(`api/posts/${route.params.id}/edit`, {
+        await axios.put(`/api/posts/${route.params.id}/edit`, {
             price: parseFloat(price.value),
             currency: currency.value,
             condition: condition.value,
@@ -100,9 +100,9 @@ const submitForm = async () => {
             headers: { Authorization: `Bearer ${token}` }
         })
         router.push(`/posts/${route.params.id}`)
-    } catch (error) {
+    } catch (error: any) {
         console.error("Failed to update post", error)
-        errorMessage.value = "Failed to update listing. Please try again."
+        errorMessage.value = error.response?.data?.error || "Failed to update listing. Please try again."
     }
 }
 
@@ -114,7 +114,7 @@ onMounted(async () => {
             return
         }
         
-        const res = await axios.get(`api/posts/${route.params.id}`)
+        const res = await axios.get(`/api/posts/${route.params.id}`)
         const post = res.data
         
         pokemonName.value = post.pokemon_name

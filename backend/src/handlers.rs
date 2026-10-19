@@ -50,6 +50,13 @@ pub async fn register(
 
     let token = create_jwt(user.id, user.username.clone());
 
+    tracing::info!(
+        "New user registered: '{}' ({}) with ID: {}",
+        user.username,
+        user.email.as_deref().unwrap_or(""),
+        user.id
+    );
+
     let response = AuthResponse {
         token,
         user: UserResponse {
@@ -105,7 +112,10 @@ pub async fn login(
     .fetch_optional(&pool)
     .await
     .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
-    .ok_or((StatusCode::UNAUTHORIZED, "Invalid username or password".to_string()))?;
+    .ok_or_else(|| {
+        tracing::warn!("Login failed: user not found: '{}'", payload.username);
+        (StatusCode::UNAUTHORIZED, "Invalid username or password".to_string())
+    })?;
 
     let hash = user.password_hash.as_ref().ok_or((StatusCode::UNAUTHORIZED, "Please sign in with Google".to_string()))?;
 
@@ -113,10 +123,13 @@ pub async fn login(
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
     if !is_valid {
+        tracing::warn!("Failed login attempt for username: '{}'", payload.username);
         return Err(crate::error::ApiError::Unauthorized("Invalid username or password".to_string()));
     }
 
     let token = create_jwt(user.id, user.username.clone());
+
+    tracing::info!("User '{}' ({}) logged in successfully", user.username, user.id);
 
     let response = AuthResponse {
         token,
@@ -158,6 +171,17 @@ pub async fn create_post(
     .fetch_one(&pool)
     .await
     .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+
+    tracing::info!(
+        "User {} created listing '{}' (ID: {}) for {} {} (condition: {}, set: '{}')",
+        claims.sub,
+        post.pokemon_name,
+        post.id,
+        post.price_cents,
+        post.currency,
+        post.condition,
+        post.set_name
+    );
 
     Ok((StatusCode::CREATED, Json(post)))
 }
@@ -245,6 +269,8 @@ pub async fn update_post(
         return Err(crate::error::ApiError::NotFound("Post not found or unauthorized".to_string()));
     }
 
+    tracing::info!("User {} updated listing {}", claims.sub, id);
+
     Ok(StatusCode::OK)
 }
 
@@ -266,6 +292,8 @@ pub async fn delete_post(
     if result.rows_affected() == 0 {
         return Err(crate::error::ApiError::NotFound("Post not found or unauthorized".to_string()));
     }
+
+    tracing::info!("User {} deleted listing {}", claims.sub, id);
 
     Ok(StatusCode::OK)
 }
@@ -326,17 +354,18 @@ pub async fn google_auth(
     Json(payload): Json<GoogleAuthRequest>,
 ) -> Result<impl IntoResponse, crate::error::ApiError> {
     let client = reqwest::Client::new();
-    let res = client.get(format!("https://oauth2.googleapis.com/tokeninfoeid_token={}", payload.token))
+    let res = client.get(format!("https://oauth2.googleapis.com/tokeninfo?id_token={}", payload.token))
         .send()
         .await
-        .map_err(|e| (StatusCode::UNAUTHORIZED, "Invalid Google token".to_string()))?;
+        .map_err(|_e| (StatusCode::UNAUTHORIZED, "Invalid Google token".to_string()))?;
 
     if !res.status().is_success() {
+        tracing::warn!("Google auth rejected: token verification failed with status {}", res.status());
         return Err(crate::error::ApiError::Unauthorized("Invalid Google token".to_string()));
     }
 
     let token_info: GoogleTokenInfo = res.json().await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, "Failed to parse Google response".to_string()))?;
+        .map_err(|_e| (StatusCode::INTERNAL_SERVER_ERROR, "Failed to parse Google response".to_string()))?;
 
     // Check if user exists by google_id
     let existing_user = sqlx::query_as!(
@@ -365,6 +394,8 @@ pub async fn google_auth(
     };
 
     let token = create_jwt(user.id, user.username.clone());
+
+    tracing::info!("User '{}' ({}) logged in via Google", user.username, user.id);
 
     let response = AuthResponse {
         token,
@@ -467,87 +498,147 @@ use axum::extract::Multipart;
 pub async fn upload_image(
     mut multipart: Multipart,
 ) -> Result<impl IntoResponse, crate::error::ApiError> {
-    
+    tracing::info!("Image upload request received");
+
     // Check if Cloudinary is configured
-    let cloudinary_url = std::env::var("CLOUDINARY_URL").ok();
-    
-    while let Some(field) = multipart.next_field().await.map_err(|e| (StatusCode::BAD_REQUEST, e.to_string()))? {
-        if let Some(mut file_name) = field.file_name().map(|s| s.to_string()) {
-            if file_name.is_empty() {
-                file_name = "image.png".to_string();
-            }
-            
-            let data = field.bytes().await.map_err(|e| (StatusCode::BAD_REQUEST, e.to_string()))?;
-            
-            if let Some(c_url) = cloudinary_url.clone() {
-                // Cloudinary URL format: cloudinary://api_key:api_secret@cloud_name
-                let without_scheme = c_url.trim_start_matches("cloudinary://");
-                let parts: Vec<&str> = without_scheme.split('@').collect();
-                if parts.len() == 2 {
-                    let creds: Vec<&str> = parts[0].split(':').collect();
-                    if creds.len() == 2 {
-                        let api_key = creds[0];
-                        let api_secret = creds[1];
-                        let cloud_name = parts[1];
-                        
-                        let timestamp = chrono::Utc::now().timestamp();
-                        
-                        use sha1::{Sha1, Digest};
-                        let to_sign = format!("moderation=aws_rek&timestamp={}{}", timestamp, api_secret);
-                        let mut hasher = Sha1::new();
-                        hasher.update(to_sign.as_bytes());
-                        let signature = hex::encode(hasher.finalize());
-                        
-                        let form = reqwest::multipart::Form::new()
-                            .part("file", reqwest::multipart::Part::bytes(data.to_vec()).file_name(file_name))
-                            .text("api_key", api_key.to_string())
-                            .text("timestamp", timestamp.to_string())
-                            .text("moderation", "aws_rek")
-                            .text("signature", signature);
-                            
-                        let url = format!("https://api.cloudinary.com/v1_1/{}/image/upload", cloud_name);
-                        let client = reqwest::Client::new();
-                        let res = client.post(&url)
-                            .multipart(form)
-                            .send()
-                            .await
-                            .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
-                            
-                        let body: serde_json::Value = res.json()
-                            .await
-                            .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
-                            
-                        if let Some(err) = body.get("error") {
-                            return Err(crate::error::ApiError::BadRequest(err.get("message").and_then(|m| m.as_str()).unwrap_or("Cloudinary error").to_string()));
+    let cloudinary_url = std::env::var("CLOUDINARY_URL").ok().filter(|s| !s.trim().is_empty());
+
+    while let Some(field) = multipart
+        .next_field()
+        .await
+        .map_err(|e| (StatusCode::BAD_REQUEST, format!("Multipart error: {}", e)))?
+    {
+        let file_name = field
+            .file_name()
+            .map(|s| s.to_string())
+            .filter(|s| !s.is_empty())
+            .unwrap_or_else(|| "image.png".to_string());
+
+        let data = field
+            .bytes()
+            .await
+            .map_err(|e| (StatusCode::BAD_REQUEST, format!("Error reading field bytes: {}", e)))?;
+
+        if data.is_empty() {
+            continue;
+        }
+
+        tracing::info!("Processing uploaded file '{}', size: {} bytes", file_name, data.len());
+
+        if let Some(c_url) = cloudinary_url.as_ref() {
+            // Cloudinary URL format: cloudinary://api_key:api_secret@cloud_name
+            let clean_url = c_url.trim().trim_matches('"').trim_matches('\'').trim_end_matches('/');
+            let without_scheme = clean_url.trim_start_matches("cloudinary://");
+            let parts: Vec<&str> = without_scheme.split('@').collect();
+
+            if parts.len() == 2 {
+                let creds: Vec<&str> = parts[0].split(':').collect();
+                if creds.len() == 2 {
+                    let api_key = creds[0];
+                    let api_secret = creds[1];
+                    let cloud_name = parts[1];
+
+                    let timestamp = chrono::Utc::now().timestamp();
+                    let use_moderation = std::env::var("CLOUDINARY_MODERATION")
+                        .map(|v| v.to_lowercase() == "aws_rek" || v.to_lowercase() == "true")
+                        .unwrap_or(false);
+
+                    use sha1::{Digest, Sha1};
+
+                    let (to_sign, form_has_moderation) = if use_moderation {
+                        (format!("moderation=aws_rek&timestamp={}{}", timestamp, api_secret), true)
+                    } else {
+                        (format!("timestamp={}{}", timestamp, api_secret), false)
+                    };
+
+                    let mut hasher = Sha1::new();
+                    hasher.update(to_sign.as_bytes());
+                    let signature = hex::encode(hasher.finalize());
+
+                    let mut form = reqwest::multipart::Form::new()
+                        .part(
+                            "file",
+                            reqwest::multipart::Part::bytes(data.to_vec()).file_name(file_name.clone()),
+                        )
+                        .text("api_key", api_key.to_string())
+                        .text("timestamp", timestamp.to_string())
+                        .text("signature", signature);
+
+                    if form_has_moderation {
+                        form = form.text("moderation", "aws_rek");
+                    }
+
+                    let url = format!("https://api.cloudinary.com/v1_1/{}/image/upload", cloud_name);
+                    let client = reqwest::Client::new();
+                    match client.post(&url).multipart(form).send().await {
+                        Ok(res) => {
+                            if let Ok(body) = res.json::<serde_json::Value>().await {
+                                if let Some(secure_url) = body.get("secure_url").and_then(|v| v.as_str()) {
+                                    tracing::info!("Image uploaded successfully to Cloudinary: {}", secure_url);
+                                    return Ok((StatusCode::OK, Json(serde_json::json!({ "url": secure_url }))));
+                                } else if let Some(err) = body.get("error") {
+                                    let err_msg = err.get("message").and_then(|m| m.as_str()).unwrap_or("Cloudinary error");
+                                    tracing::warn!("Cloudinary returned error: {}. Attempting fallback...", err_msg);
+
+                                    // If moderation was the failure, retry once without moderation
+                                    if form_has_moderation && (err_msg.contains("moderation") || err_msg.contains("aws_rek")) {
+                                        let ts2 = chrono::Utc::now().timestamp();
+                                        let to_sign2 = format!("timestamp={}{}", ts2, api_secret);
+                                        let mut hasher2 = Sha1::new();
+                                        hasher2.update(to_sign2.as_bytes());
+                                        let sig2 = hex::encode(hasher2.finalize());
+                                        let form2 = reqwest::multipart::Form::new()
+                                            .part("file", reqwest::multipart::Part::bytes(data.to_vec()).file_name(file_name.clone()))
+                                            .text("api_key", api_key.to_string())
+                                            .text("timestamp", ts2.to_string())
+                                            .text("signature", sig2);
+                                        if let Ok(res2) = client.post(&url).multipart(form2).send().await {
+                                            if let Ok(body2) = res2.json::<serde_json::Value>().await {
+                                                if let Some(secure_url2) = body2.get("secure_url").and_then(|v| v.as_str()) {
+                                                    tracing::info!("Image uploaded successfully to Cloudinary without moderation: {}", secure_url2);
+                                                    return Ok((StatusCode::OK, Json(serde_json::json!({ "url": secure_url2 }))));
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
                         }
-                            
-                        if let Some(secure_url) = body.get("secure_url").and_then(|v| v.as_str()) {
-                            return Ok((StatusCode::OK, Json(serde_json::json!({ "url": secure_url }))));
+                        Err(e) => {
+                            tracing::warn!("Failed connecting to Cloudinary: {}. Falling back to local upload.", e);
                         }
                     }
                 }
-                return Err(crate::error::ApiError::Internal("Invalid CLOUDINARY_URL format".to_string()));
-            } else {
-                // Fallback to local uploads
-                let ext = std::path::Path::new(&file_name)
-                    .extension()
-                    .and_then(|v| v.to_str())
-                    .unwrap_or("png");
-                
-                let unique_name = format!("{}.{}", uuid::Uuid::new_v4(), ext);
-                let path = std::path::Path::new("uploads").join(&unique_name);
-                
-                tokio::fs::write(&path, data).await.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
-                
-                let backend_url = std::env::var("BACKEND_URL")
-                    .or_else(|_| std::env::var("API_URL"))
-                    .unwrap_or_else(|_| "http://localhost:8080".to_string());
-                let url = format!("{}/uploads/{}", backend_url.trim_end_matches('/'), unique_name);
-                return Ok((StatusCode::OK, Json(serde_json::json!({ "url": url }))));
             }
+            tracing::warn!("Cloudinary upload unsuccessful, falling back to local storage");
         }
+
+        // Local upload fallback (or default if no Cloudinary URL)
+        let ext = std::path::Path::new(&file_name)
+            .extension()
+            .and_then(|v| v.to_str())
+            .unwrap_or("png");
+
+        let unique_name = format!("{}.{}", uuid::Uuid::new_v4(), ext);
+        if let Err(e) = tokio::fs::create_dir_all("uploads").await {
+            tracing::error!("Failed to create uploads directory: {}", e);
+            return Err(crate::error::ApiError::Internal("Failed to initialize upload directory".to_string()));
+        }
+        let path = std::path::Path::new("uploads").join(&unique_name);
+
+        tokio::fs::write(&path, &data)
+            .await
+            .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, format!("Failed to write file locally: {}", e)))?;
+
+        let backend_url = std::env::var("BACKEND_URL")
+            .or_else(|_| std::env::var("API_URL"))
+            .unwrap_or_else(|_| "http://localhost:8080".to_string());
+        let url = format!("{}/uploads/{}", backend_url.trim_end_matches('/'), unique_name);
+        tracing::info!("Image saved locally: {}", url);
+        return Ok((StatusCode::OK, Json(serde_json::json!({ "url": url }))));
     }
-    Err(crate::error::ApiError::BadRequest("No file found".to_string()))
+
+    Err(crate::error::ApiError::BadRequest("No file found in upload request".to_string()))
 }
 
 use crate::models::Notification;
@@ -745,6 +836,14 @@ pub async fn create_offer(
     .execute(&pool)
     .await;
 
+    tracing::info!(
+        "User {} made an offer of {} {:.2} on post {}",
+        claims.sub,
+        offer.currency,
+        offer.amount_cents as f64 / 100.0,
+        id
+    );
+
     Ok((StatusCode::CREATED, Json(offer)))
 }
 
@@ -831,6 +930,9 @@ pub async fn update_offer_status(
         )
         .execute(&pool)
         .await;
+
+        tracing::info!("User {} updated offer {} status to '{}'", claims.sub, id, payload.status);
+
         Ok(StatusCode::OK)
     } else {
         Err(crate::error::ApiError::NotFound("Offer not found or unauthorized".to_string()))
@@ -854,55 +956,48 @@ pub struct MarketPriceResponse {
 pub async fn get_market_price(
     Query(query): Query<MarketPriceQuery>,
 ) -> Result<impl IntoResponse, crate::error::ApiError> {
-    
-    // We will query api.pokemontcg.io
-    // Format: https://api.pokemontcg.io/v2/cardseq=name:"charizard" set.name:"base"
-    
-    let mut q = format!("name:\"*{:?}*\"", query.name.replace('"', ""));
+    let mut q = format!("name:\"*{}*\"", query.name.replace('"', ""));
     if let Some(set_name) = &query.set {
-        q = format!("{} set.name:\"*{:?}*\"", q, set_name.replace('"', ""));
+        q = format!("{} set.name:\"*{}*\"", q, set_name.replace('"', ""));
     }
 
     let q_encoded = q.replace(" ", "%20");
-    let url = format!("https://api.pokemontcg.io/v2/cardseq={}", q_encoded);
+    let url = format!("https://api.pokemontcg.io/v2/cards?q={}", q_encoded);
 
     let client = reqwest::Client::new();
     let res = client.get(&url)
+        .header("User-Agent", "PokeMarketRD/1.0")
         .send()
-        .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+        .await;
 
-    let body: serde_json::Value = res.json()
-        .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
-
-    // Try to extract tcgplayer prices from the first matching card
-    let cards = body.get("data").and_then(|d| d.as_array());
-    
-    if let Some(cards) = cards {
-        if let Some(first_card) = cards.first() {
-            if let Some(tcgplayer) = first_card.get("tcgplayer") {
-                if let Some(prices) = tcgplayer.get("prices") {
-                    // Try holofoil or normal
-                    let price_data = prices.get("holofoil").or_else(|| prices.get("normal"));
-                    
-                    if let Some(p) = price_data {
-                        let avg = p.get("market").and_then(|v| v.as_f64());
-                        let low = p.get("low").and_then(|v| v.as_f64());
-                        let high = p.get("high").and_then(|v| v.as_f64());
-                        
-                        return Ok((StatusCode::OK, Json(MarketPriceResponse {
-                            average_sell_price: avg,
-                            low_price: low,
-                            high_price: high,
-                        })));
+    if let Ok(res) = res {
+        if res.status().is_success() {
+            if let Ok(body) = res.json::<serde_json::Value>().await {
+                let cards = body.get("data").and_then(|d| d.as_array());
+                if let Some(cards) = cards {
+                    if let Some(first_card) = cards.first() {
+                        if let Some(tcgplayer) = first_card.get("tcgplayer") {
+                            if let Some(prices) = tcgplayer.get("prices") {
+                                let price_data = prices.get("holofoil").or_else(|| prices.get("normal"));
+                                if let Some(p) = price_data {
+                                    let avg = p.get("market").and_then(|v| v.as_f64());
+                                    let low = p.get("low").and_then(|v| v.as_f64());
+                                    let high = p.get("high").and_then(|v| v.as_f64());
+                                    return Ok((StatusCode::OK, Json(MarketPriceResponse {
+                                        average_sell_price: avg,
+                                        low_price: low,
+                                        high_price: high,
+                                    })));
+                                }
+                            }
+                        }
                     }
                 }
             }
         }
     }
 
-    // Return empty if not found
+    // Return empty gracefully if not found or external API error
     Ok((StatusCode::OK, Json(MarketPriceResponse {
         average_sell_price: None,
         low_price: None,
@@ -919,46 +1014,25 @@ pub struct CommunityPostFilter {
 
 pub async fn get_community_posts(
     State(pool): State<PgPool>,
-    // Optional auth token to see if user liked
-    req: axum::extract::Request,
+    Query(filter): Query<CommunityPostFilter>,
+    headers: axum::http::HeaderMap,
 ) -> Result<impl IntoResponse, crate::error::ApiError> {
-    
-    // Check if there is an auth token in the request header
+    // Optional auth token to see if user liked
     let mut current_user_id: Option<uuid::Uuid> = None;
-    if let Some(auth_header) = req.headers().get("Authorization") {
-        if let Ok(auth_str) = auth_header.to_str() {
-            if auth_str.starts_with("Bearer ") {
-                let token = &auth_str[7..];
-                // In a real app we would properly decode and verify, but since we use extensions normally,
-                // we can just decode the payload without verification here since it's just for UI state
-                // Or better yet, we can try to parse the JWT payload.
-                let parts: Vec<&str> = token.split('.').collect();
-                if parts.len() == 3 {
-                    if let Ok(payload_bytes) = base64::Engine::decode(&base64::engine::general_purpose::URL_SAFE_NO_PAD, parts[1]) {
-                        if let Ok(claims) = serde_json::from_slice::<serde_json::Value>(&payload_bytes) {
-                            if let Some(sub) = claims.get("sub").and_then(|v| v.as_str()) {
-                                if let Ok(uid) = uuid::Uuid::parse_str(sub) {
-                                    current_user_id = Some(uid);
-                                }
-                            }
-                        }
-                    }
-                }
+    if let Some(auth_header) = headers.get("Authorization").and_then(|v| v.to_str().ok()) {
+        if let Some(token) = auth_header.strip_prefix("Bearer ") {
+            let secret = std::env::var("JWT_SECRET").unwrap_or_else(|_| "super_secret_key_change_me_in_production".to_string());
+            if let Ok(data) = jsonwebtoken::decode::<Claims>(
+                token,
+                &jsonwebtoken::DecodingKey::from_secret(secret.as_ref()),
+                &jsonwebtoken::Validation::default(),
+            ) {
+                current_user_id = Some(data.claims.sub);
             }
         }
     }
 
-    // Parse query params manually since we consumed the request
-    let query_str = req.uri().query().unwrap_or("");
-    let mut category: Option<String> = None;
-    for param in query_str.split('&') {
-        let kv: Vec<&str> = param.split('=').collect();
-        if kv.len() == 2 && kv[0] == "category" {
-            category = Some(kv[1].to_string());
-        }
-    }
-
-    let category = category.filter(|c| c != "All" && c != "undefined");
+    let category = filter.category.filter(|c| c != "All" && c != "undefined");
 
     let posts = sqlx::query_as!(
         CommunityPost,
@@ -1012,6 +1086,13 @@ pub async fn create_community_post(
     .await
     .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
+    tracing::info!(
+        "User {} created community post (ID: {}) in category '{:?}'",
+        claims.sub,
+        post.id,
+        post.category
+    );
+
     Ok((StatusCode::CREATED, Json(post)))
 }
 
@@ -1033,12 +1114,14 @@ pub async fn toggle_community_like(
             .execute(&pool)
             .await
             .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+        tracing::info!("User {} unliked community post {}", claims.sub, id);
     } else {
         // Like
         sqlx::query!("INSERT INTO community_likes (user_id, post_id) VALUES ($1, $2)", claims.sub, id)
             .execute(&pool)
             .await
             .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+        tracing::info!("User {} liked community post {}", claims.sub, id);
     }
 
     Ok(StatusCode::OK)
@@ -1091,6 +1174,8 @@ pub async fn create_community_comment(
     .fetch_one(&pool)
     .await
     .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+
+    tracing::info!("User {} added comment on community post {}", claims.sub, id);
 
     Ok((StatusCode::CREATED, Json(comment)))
 }

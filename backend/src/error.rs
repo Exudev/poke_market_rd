@@ -17,9 +17,18 @@ impl IntoResponse for ApiError {
     fn into_response(self) -> Response {
         let (status, error_message) = match self {
             ApiError::NotFound(msg) => (StatusCode::NOT_FOUND, msg),
-            ApiError::BadRequest(msg) => (StatusCode::BAD_REQUEST, msg),
-            ApiError::Unauthorized(msg) => (StatusCode::UNAUTHORIZED, msg),
-            ApiError::Conflict(msg) => (StatusCode::CONFLICT, msg),
+            ApiError::BadRequest(msg) => {
+                tracing::warn!("Bad request: {}", msg);
+                (StatusCode::BAD_REQUEST, msg)
+            }
+            ApiError::Unauthorized(msg) => {
+                tracing::warn!("Unauthorized: {}", msg);
+                (StatusCode::UNAUTHORIZED, msg)
+            }
+            ApiError::Conflict(msg) => {
+                tracing::warn!("Conflict: {}", msg);
+                (StatusCode::CONFLICT, msg)
+            }
             ApiError::Internal(msg) => {
                 tracing::error!("Internal server error: {}", msg);
                 (StatusCode::INTERNAL_SERVER_ERROR, "An internal server error occurred".to_string())
