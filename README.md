@@ -1,4 +1,4 @@
-# 🇩🇴 PokéMart DR
+# PokéMart
 
 The #1 Pokémon TCG Marketplace in the Dominican Republic. Buy, sell, and trade Pokémon cards safely with local collectors.
 
